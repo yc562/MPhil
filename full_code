@@ -186,7 +186,7 @@ import csv
 
 with open("fAlleles.csv") as original_file:
     reader = csv.reader(original_file)
-    header = next(reader) # skip header row
+    header = next(reader) 
     data = [row for row in reader]
 
 allele_dict = {}
@@ -195,12 +195,10 @@ counter = 1
 
 with open("alleleNo.csv", "w", newline="") as new_file:
     writer = csv.writer(new_file)
-    # write header row
     writer.writerow(header + ["geneName", "mutation", "alleleNo."])
     for row in data:
         allele_name = row[2]
         gene_name, mutation = allele_name.split("@")
-        # check if the allele name has already been simplified
         if allele_name in allele_dict:
             allele_no = allele_dict[allele_name]
         else:
@@ -216,7 +214,6 @@ with open("alleleNo.csv", "w", newline="") as new_file:
 
 import csv
 
-# Read the original csv file
 with open("alleleNo.csv", "r") as f:
     reader = csv.DictReader(f)
     data = [row for row in reader]
