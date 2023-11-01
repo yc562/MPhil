@@ -1,0 +1,394 @@
+##### 1. dump_fastq #####
+
+import os
+
+import numpy  as np
+import pandas as pd
+
+annotation = pd.read_csv('./annotation.csv')
+
+for col in annotation.columns:
+    for idx in range(len(annotation[col])):
+        sample_id = annotation.loc[idx,col]
+        if not np.isnan(sample_id):
+            run_accession = 2567177 + int(sample_id)
+            for n in [1,2]:
+                sample_code = f'S{int(sample_id)}_{n}'
+                os.system(f'wget -m ftp://ftp.sra.ebi.ac.uk/vol1/run/ERR256/ERR{run_accession}/{sample_code}.fastq.gz')
+            
+            if col == 'Control':
+                os.system(f'mv ./ftp.sra.ebi.ac.uk/vol1/run/ERR256/ERR{run_accession} ~/Desktop/projectA/diseaseA/data/control')
+            else:
+                os.system(f'mv ./ftp.sra.ebi.ac.uk/vol1/run/ERR256/ERR{run_accession} ~/Desktop/projectA/diseaseA/data/disease')
+
+
+
+
+
+##### 2. export_alleles #####
+
+import os
+
+import numpy  as np
+import pandas as pd
+
+
+paired  = True
+preset  = 'ampliseq-tcrb-plus-full-length'
+species = 'hsa'
+na_type = 'rna'
+
+categories = os.listdir('./data/')
+
+runs = dict()
+for c in categories:
+    runs[c] = os.listdir(f'./data/{c}/')
+
+    for r in runs[c]:
+        path = fr'./data/{c}/{r}/'
+        alignment = fr'{path}{r}.vdjca'
+
+        files = os.listdir(path)
+        if '.listing' in files:
+            os.system(f'rm {path}.listing')
+
+        files = os.listdir(path)
+
+        if paired:
+            if len(files) == 2:
+                input_1 = fr'{path}{files[0]}'
+                input_2 = fr'{path}{files[1]}'
+
+                print(f"Alignment for paired-end sequence files <{r}>.\n\n")
+                os.system(fr'java –Xmx2g –Xms1g -jar ~/mixcr/mixcr.jar align -s {species} -p {preset} --{na_type} {input_1} {input_2} {alignment}')
+        else:
+            if len(files) == 1:
+                input_1 = fr'{path}{files[0]}'
+
+                print(f"Alignment for single-end sequence files <{r}>.\n\n")
+                os.system(fr'java –Xmx2g –Xms1g -jar ~/mixcr/mixcr.jar align -s {species} -p {preset} --{na_type} {input_1} {alignment}')
+        
+        assemble = fr'{path}{r}.clns'
+        alleles  = fr'{path}{r}_alleles.clns'
+
+        eClones  = fr'{path}{r}_clns.tsv' 
+        eAlleles = fr'{path}{r}_alleles.tsv'
+        
+        print(f"\n\nAssemble <{r}>.\n\n")
+        os.system(fr'java –Xmx2g –Xms1g -jar ~/mixcr/mixcr.jar assemble {alignment} {assemble}')
+
+        print(f"\n\nExport Clones <{r}_clns.tsv>.\n\n")
+        os.system(fr'java –Xmx2g –Xms1g -jar ~/mixcr/mixcr.jar exportClones {assemble} {eClones}')
+
+        print(f"\n\nExport Alleles Mutations <{r}_alleles.tsv>.\n\n")
+        os.system(fr'java –Xmx2g –Xms1g -jar ~/mixcr/mixcr.jar findAlleles {assemble} --output-template {alleles} --export-alleles-mutations {eAlleles}')
+
+
+
+
+
+####   the number of reads and clonotypes / t-test   ####
+
+import matplotlib.pyplot as plt
+import scipy.stats as stats
+
+
+control_sequencing_reads = [1343094, 810609, 771081, 1169082, 1300143, 835099, 821541, 648555, 1165283, 1108219, 1045997, 991472, 1156828, 1193504, 744963, 982330, 1097926, 760712, 1170298, 727020, 1038325, 563791, 918922, 1017322, 553161, 1006723, 925047, 844723, 714743, 925441, 836175, 1110912, 1075146, 1079546, 2400009, 899513, 1248452, 884307, 716032, 1015125, 927520, 1424753, 1112861, 1090776, 888454, 1200784, 854735, 823392]
+disease_sequencing_reads = [985128, 805330, 998185, 1065957, 751018, 1135031, 853774, 930792, 1004995, 1367137, 165901, 1030119, 885136, 1041460, 886454, 851841, 1074038, 718667, 1147795, 1272711, 1042429, 978156, 839098, 1585229, 791813, 1001867, 931736, 932900, 890127, 1013661, 1035125, 708071, 1130090, 883139, 949371, 1248473, 918025, 1217469, 752920, 1045633, 1109144, 661773, 1153879, 1143995, 1052334, 1853260, 905801, 737459, 847195, 818018, 775537]
+
+plt.figure(figsize=(10, 6))
+plt.boxplot([control_sequencing_reads, disease_sequencing_reads], labels=['Control', 'Disease'])
+
+t_statistic, p_value = stats.ttest_ind(control_sequencing_reads, disease_sequencing_reads)
+
+plt.text(1.5, max(max(control_sequencing_reads), max(disease_sequencing_reads)), f'p = {p_value:.4f}', ha='center', va='bottom', fontsize=12, color='red')
+
+plt.title("")
+plt.ylabel("Sequencing Reads")
+plt.show()
+
+
+
+control_clonotype_count = [23247, 1080, 26195, 36748, 13109, 27447, 30881, 17871, 9324, 13716, 8767, 12565, 14743, 3579, 19431, 12447, 29383, 26166, 12182, 18213, 23469, 19337, 24847, 27857, 2907, 26374, 32839, 22338, 3129, 27170, 18513, 21092, 14685, 27848, 4986, 14010, 29936, 21232, 22360, 21445, 14181, 31227, 13852, 8664, 10471, 28991, 19772, 21851]
+disease_clonotype_count = [20419, 25990, 32148, 32179, 29364, 35870, 31756, 9943, 2910, 11027, 12195, 22317, 22295, 14792, 32593, 30128, 35437, 15893, 25244, 22664, 34959, 23624, 24495, 14293, 33555, 21456, 30911, 25222, 25781, 25060, 26193, 16179, 30064, 16223, 13766, 11252, 24683, 8213, 5842, 11155, 32656, 11102, 6113, 25622, 29594, 11472, 4450, 18753, 29385, 23946, 27321]
+
+plt.figure(figsize=(10, 6))
+plt.boxplot([control_clonotype_count, disease_clonotype_count], labels=['Control', 'Disease'])
+
+t_statistic, p_value_clonotype = stats.ttest_ind(control_clonotype_count, disease_clonotype_count)
+
+plt.text(1.5, max(max(control_clonotype_count), max(disease_clonotype_count)), f'p = {p_value_clonotype:.4f}', ha='center', va='bottom', fontsize=12, color='red')
+
+plt.title("")
+plt.ylabel("Clonotype Count")
+plt.show()
+
+control_found_alleles = [20, 2, 19, 29, 10, 21, 21, 21, 10, 11, 21, 11, 20, 10, 18, 13, 21, 21, 12, 16, 13, 9, 15, 12, 6, 16, 21, 15, 7, 23, 10, 18, 9, 36, 11, 12, 20, 16, 19, 12, 10, 16, 12, 4, 6, 21, 15, 25]
+disease_found_alleles = [13, 32, 13, 33, 15, 15, 15, 14, 21, 15, 8, 23, 16, 10, 20, 21, 11, 14, 19, 24, 19, 22, 17, 13, 22, 16, 8, 12, 10, 24, 15, 11, 17, 21, 12, 24, 22, 14, 15, 15, 19, 13, 14, 16, 20, 18, 4, 17, 17, 16, 12]
+
+plt.figure(figsize=(10, 6))
+plt.boxplot([control_found_alleles, disease_found_alleles], labels=['Control', 'Disease'])
+
+t_statistic, p_value_alleles = stats.ttest_ind(control_found_alleles, disease_found_alleles)
+
+plt.text(1.5, max(max(control_found_alleles), max(disease_found_alleles)), f'p = {p_value_alleles:.4f}', ha='center', va='bottom', fontsize=12, color='red')
+
+plt.title("")
+plt.ylabel("Found Alleles")
+plt.show()
+
+
+
+
+
+
+##### merge_alleles #####
+import os
+
+import numpy  as np
+import pandas as pd
+
+categories = os.listdir('./data/')
+
+runs,fAlleles = dict(),list()
+for c in categories:
+    runs[c] = os.listdir(f'./data/{c}/')
+
+    for r in runs[c]:
+        path  = fr'./data/{c}/{r}/'
+        files = os.listdir(path)
+
+        if str(f'{r}_alleles.tsv') in files:
+            eAlleles = pd.read_csv(f'{path}{r}_alleles.tsv', delimiter='\t')
+
+            for idx in range(len(eAlleles)):
+                if type(eAlleles.loc[idx,'mutations']) == type(''):
+                    allele_name = eAlleles.loc[idx,'geneName'] + '@' + eAlleles.loc[idx,'mutations']
+                    fAlleles.append({'runs':r, 'alleleName':allele_name, 'type':eAlleles.loc[idx,'type'], 'category':c})
+
+                else: pass
+
+        else:
+            print(f"'{r}_alleles.tsv' does not exist.")
+            pass
+
+fAlleles = pd.DataFrame(fAlleles)
+
+fAlleles.to_csv("./result/fAlleles.csv",header=True)
+
+
+
+
+
+##### alleleNo #####
+import csv
+
+
+with open("fAlleles.csv") as original_file:
+    reader = csv.reader(original_file)
+    header = next(reader) # skip header row
+    data = [row for row in reader]
+
+allele_dict = {}
+counter = 1
+
+
+with open("alleleNo.csv", "w", newline="") as new_file:
+    writer = csv.writer(new_file)
+    # write header row
+    writer.writerow(header + ["geneName", "mutation", "alleleNo."])
+    for row in data:
+        allele_name = row[2]
+        gene_name, mutation = allele_name.split("@")
+        # check if the allele name has already been simplified
+        if allele_name in allele_dict:
+            allele_no = allele_dict[allele_name]
+        else:
+            allele_dict[allele_name] = allele_no = f"{gene_name}*({counter})"
+            counter += 1
+        writer.writerow(row + [gene_name, mutation, allele_no])
+
+
+
+
+
+##### allele_count #####
+
+import csv
+
+# Read the original csv file
+with open("alleleNo.csv", "r") as f:
+    reader = csv.DictReader(f)
+    data = [row for row in reader]
+
+allele_count = {}
+for row in data:
+    alleleNo = row["alleleNo."]
+    category = row["category"]
+    if alleleNo not in allele_count:
+        allele_count[alleleNo] = {"control": 0, "disease": 0}
+    allele_count[alleleNo][category] += 1
+
+control_percentages = {}
+disease_percentages = {}
+for alleleNo, count in allele_count.items():
+    control_percentages[alleleNo] = (count["control"] / 96) * 100
+    disease_percentages[alleleNo] = (count["disease"] / 102) * 100
+
+with open("allele_count.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["alleleNo.", "count in control", "count in disease", "allele percentage in control", "allele percentage in disease"])
+    for alleleNo, count in allele_count.items():
+        writer.writerow([alleleNo, count["control"], count["disease"], control_percentages[alleleNo], disease_percentages[alleleNo]])
+
+
+
+
+##### IGHVgeneusagefinal #####
+
+import os
+import numpy as np
+import pandas as pd
+
+categories = os.listdir('./data/')
+
+
+results = pd.DataFrame(columns=["category", "Group", "readCount"])
+
+for c in categories:
+    runs = os.listdir(f'./data/{c}/')
+
+    for r in runs:
+        path  = fr'./data/{c}/{r}/'
+        files = os.listdir(path)
+
+        if str(f'{r}_clns_IGH.tsv') in files:
+
+            df = pd.read_csv(f'{path}{r}_clns_IGH.tsv', delimiter='\t')
+
+            df = df[["readCount", "allVHitsWithScore"]]
+
+            df["Group"] = df["allVHitsWithScore"].str.split("*").str[0]
+
+            df["category"] = c
+
+            df = df.groupby(["category", "Group"]).agg({"readCount": np.sum}).reset_index()
+
+            results = pd.concat([results, df], axis=0, ignore_index=True)
+
+        else:
+            print(f"'{r}_clns_IGH.tsv' does not exist.")
+            pass
+
+results_grouped = results.groupby(["category", "Group"]).agg({"readCount": np.sum}).reset_index()
+
+results_grouped["percentage"] = results_grouped.groupby("category")["readCount"].apply(lambda x: x / x.sum() * 100)
+
+results_grouped.to_csv("./result/IGHVgenefinal.tsv", sep='\t', index_label="Group")
+
+
+
+
+##### double_barchart #####
+import matplotlib.pyplot as plt
+import csv
+
+
+with open("allele_count.csv", "r") as f:
+    reader = csv.DictReader(f)
+    data = [row for row in reader]
+
+alleleNo_list = []
+control_list = []
+disease_list = []
+
+for row in data:
+    if row["alleleNo."].startswith("IGHV"):
+        alleleNo_list.append(row["alleleNo."])
+        control_list.append(float(row["allele percentage in control"]))
+        disease_list.append(float(row["allele percentage in disease"]))
+
+
+bar_width = 0.35
+index = list(range(len(alleleNo_list)))
+
+fig, ax = plt.subplots()
+bar1 = ax.bar(index, control_list, bar_width, label="Control")
+bar2 = ax.bar([i + bar_width for i in index], disease_list, bar_width, label="Disease")
+
+ax.set_xlabel("AlleleNo")
+ax.set_ylabel("Allele Percentage")
+ax.set_xticks([i + bar_width / 2 for i in index])
+ax.set_xticklabels(alleleNo_list, rotation=90)
+ax.legend()
+
+plt.tight_layout()
+plt.show()
+
+
+
+
+####   dot plot ####
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+
+df = pd.read_csv('dot_plot_noanomaly.csv')
+
+df = df[df['alleleNo.'].str.startswith('IGHV')]
+
+fig, ax = plt.subplots()
+
+for i, row in df.iterrows():
+    ax.scatter(row['D:C ratio'], row['allele percentage in disease'])
+    ax.annotate(row['alleleNo.'], xy=(row['D:C ratio'], row['allele percentage in disease']), fontsize=7)
+
+ax.set_xlabel('D:C ratio')
+ax.set_ylabel('allele percentage in disease')
+ax.set_title('Dot Plot of IGHV Alleles')
+
+plt.show()
+
+
+
+
+#### Translation ####
+from Bio.Seq import Seq
+
+dna_sequence = Seq("")
+
+amino_acid_sequence = dna_sequence.translate()
+mutated_sequence = dna_sequence.tomutable()
+
+mutations = [
+    (254, "a"),
+    (267, "T"),
+    (281, "C")
+]
+
+for position, nucleotide in mutations:
+    mutated_sequence[position - 1] = nucleotide
+
+new_amino_acid_sequence = mutated_sequence.toseq().translate()
+
+print("Original amino acid sequence:")
+print(amino_acid_sequence)
+print("")
+
+print("Mutated amino acid sequence:")
+print(new_amino_acid_sequence)
+print("")
+
+
+changed_indices = []
+for i in range(len(amino_acid_sequence)):
+    if amino_acid_sequence[i] != new_amino_acid_sequence[i]:
+        changed_indices.append(i + 1)
+
+if len(changed_indices) > 0:
+    print("Changed amino acid indices:")
+    for index in changed_indices:
+        print("Index {} has changed: {} -> {}".format(index, amino_acid_sequence[index - 1], new_amino_acid_sequence[index - 1]))
+else:
+    print("No amino acid changes detected.")
